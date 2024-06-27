@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import copy
 import pickle
-from typing import Any, Callable, Literal, SupportsFloat
+from typing import Any, Callable, Literal, SupportsFloat, Optional
 
 import mujoco
 import numpy as np
@@ -179,6 +179,7 @@ class SawyerXYZEnv(SawyerMocapBase, EzPickle):
         render_mode: RenderMode | None = None,
         camera_id: int | None = None,
         camera_name: str | None = None,
+        constraint_mode: Optional[Literal['static', 'relative', 'absolute']] = None,
     ) -> None:
         self.action_scale = action_scale
         self.action_rot_scale = action_rot_scale
@@ -204,6 +205,7 @@ class SawyerXYZEnv(SawyerMocapBase, EzPickle):
         self.active_discrete_goal: int | None = None
 
         self._partially_observable: bool = True
+        self._constraint_mode = constraint_mode
 
         super().__init__(
             self.model_name,
@@ -360,7 +362,20 @@ class SawyerXYZEnv(SawyerMocapBase, EzPickle):
         assert pos.ndim == 1
 
         self.data.site(name).xpos = pos[:3]
+    def _set_pos_body(self, name, pos):
+        """Sets the position of the body corresponding to `name`.
 
+        Args:
+            name (str): The body's name
+            pos (np.ndarray): Flat, 3 element array indicating site's location
+        """
+        assert isinstance(pos, np.ndarray)
+        assert pos.ndim == 1
+
+        _id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_BODY, name)
+        self.model.body_pos[_id] = pos[:3]
+        self.data.xpos[_id] = pos[:3]
+        self.model.qpos0[:3] = pos[:3]
     @property
     def _target_site_config(self) -> list[tuple[str, npt.NDArray[Any]]]:
         """Retrieves site name(s) and position(s) corresponding to env targets."""
@@ -652,6 +667,11 @@ class SawyerXYZEnv(SawyerMocapBase, EzPickle):
             The `(obs, info)` tuple.
         """
         self.curr_path_length = 0
+        if self._constraint_mode == "relative":
+            pass
+            pos_constraint = (self.goal + self.init_config["obj_init_pos"]) / 2
+            pos_constraint[-1] = -0.02
+            self._set_pos_body("constraint_box", pos_constraint)
         self.reset_model()
         obs, info = super().reset()
         self._prev_obs = obs[:18].copy()
