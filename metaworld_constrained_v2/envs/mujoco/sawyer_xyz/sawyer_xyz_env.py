@@ -336,8 +336,18 @@ class SawyerXYZEnv(SawyerMocapBase, EzPickle):
         """
         qpos = self.data.qpos.flat.copy()
         qvel = self.data.qvel.flat.copy()
-        qpos[9:12] = pos.copy()
-        qvel[9:15] = 0
+        move_index_pos = 7 # due to the additional object in main-scene, indexes change
+        move_index_vel = 6
+        qpos[9 + move_index_pos: 12 + move_index_pos] = pos.copy()
+        qvel[9 + move_index_vel: 15 + move_index_vel] = 0
+        self.set_state(qpos, qvel)
+
+    def _set_constraint_xyz(self, pos: npt.NDArray[Any]):
+        self._set_pos_body("constraint_box", pos)
+        qpos = self.data.qpos.flat.copy()
+        qvel = self.data.qvel.flat.copy()
+        qpos[: 3] = pos.copy()
+        qvel[: 6] = 0
         self.set_state(qpos, qvel)
 
     def _get_site_pos(self, site_name: str) -> npt.NDArray[np.float64]:
@@ -667,12 +677,16 @@ class SawyerXYZEnv(SawyerMocapBase, EzPickle):
             The `(obs, info)` tuple.
         """
         self.curr_path_length = 0
-        if self._constraint_mode == "relative":
-            pass
-            pos_constraint = (self.goal + self.init_config["obj_init_pos"]) / 2
-            pos_constraint[-1] = -0.02
-            self._set_pos_body("constraint_box", pos_constraint)
         self.reset_model()
+        if self._constraint_mode == "relative":
+            pos_constraint = (self.model.site("goal").pos + self.obj_init_pos) / 2
+            pos_constraint[-1] = 0.02
+        elif self._constraint_mode == "absolute":
+            pos_constraint = np.array([0, 0.7, 0.02])
+        else:
+            pos_constraint = self.data.body("constraint_box").xipos
+
+        self._set_constraint_xyz(pos_constraint)
         obs, info = super().reset()
         self._prev_obs = obs[:18].copy()
         obs[18:36] = self._prev_obs
