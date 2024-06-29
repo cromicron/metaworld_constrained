@@ -511,13 +511,14 @@ class SawyerXYZEnv(SawyerMocapBase, EzPickle):
         obs_obj_padded[: len(obj_pos) + len(obj_quat)] = np.hstack(
             [np.hstack((pos, quat)) for pos, quat in zip(obj_pos_split, obj_quat_split)]
         )
-        return np.hstack((pos_hand, gripper_distance_apart, obs_obj_padded))
+        pos_constraint = self._get_site_pos("constraint_site")
+        return np.hstack((pos_hand, gripper_distance_apart, obs_obj_padded, pos_constraint))
 
     def _get_obs(self) -> npt.NDArray[np.float64]:
         """Frame stacks `_get_curr_obs_combined_no_goal()` and concatenates the goal position to form a single flat observation.
 
         Returns:
-            The flat observation array (39 elements)
+            The flat observation array (45 elements)
         """
         # do frame stacking
         pos_goal = self._get_pos_goal()
@@ -539,7 +540,7 @@ class SawyerXYZEnv(SawyerMocapBase, EzPickle):
 
     @property
     def sawyer_observation_space(self) -> Box:
-        obs_obj_max_len = 14
+        obs_obj_max_len = 17
         obj_low = np.full(obs_obj_max_len, -np.inf, dtype=np.float64)
         obj_high = np.full(obs_obj_max_len, +np.inf, dtype=np.float64)
         if self._partially_observable:
@@ -618,6 +619,7 @@ class SawyerXYZEnv(SawyerMocapBase, EzPickle):
                     "in_place_reward": 0.0,
                     "obj_to_target": 0.0,
                     "unscaled_reward": 0.0,
+                    "constraint": False,
                 },
             )
         mujoco.mj_forward(self.model, self.data)
@@ -636,6 +638,15 @@ class SawyerXYZEnv(SawyerMocapBase, EzPickle):
         truncate = False
         if self.curr_path_length == self.max_path_length:
             truncate = True
+
+        # Check if constraint was touched
+        sensor_id = mujoco.mj_name2id(
+            self.model,
+            mujoco.mjtObj.mjOBJ_SENSOR,
+            "constraint_touch_sensor"
+        )
+        constraint = self.data.sensordata[sensor_id] != 0
+        info["constraint"] = constraint
         return (
             np.array(self._last_stable_obs, dtype=np.float64),
             reward,
@@ -643,6 +654,7 @@ class SawyerXYZEnv(SawyerMocapBase, EzPickle):
             truncate,
             info,
         )
+
 
     def evaluate_state(
         self, obs: npt.NDArray[np.float64], action: npt.NDArray[np.float32]
@@ -688,8 +700,8 @@ class SawyerXYZEnv(SawyerMocapBase, EzPickle):
 
         self._set_constraint_xyz(pos_constraint)
         obs, info = super().reset()
-        self._prev_obs = obs[:18].copy()
-        obs[18:36] = self._prev_obs
+        self._prev_obs = obs[:21].copy()
+        obs[21:42] = self._prev_obs
         obs = obs.astype(np.float64)
         return obs, info
 
