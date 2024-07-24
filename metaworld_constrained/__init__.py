@@ -242,6 +242,7 @@ class ML1(Benchmark):
         if env_name not in _env_dict.ALL_V2_ENVIRONMENTS:
             raise ValueError(f"{env_name} is not a V2 environment")
         self.constraint_mode = constraint_mode
+        self.constraint_size = constraint_size
         cls = _env_dict.ALL_V2_ENVIRONMENTS[env_name]
         self._train_classes = OrderedDict([(env_name, cls)])
         self._test_classes = self._train_classes
