@@ -186,6 +186,7 @@ class SawyerXYZEnv(SawyerMocapBase, EzPickle):
         camera_name: str | None = None,
         constraint_mode: Literal["static", "relative", "absolute", "random"] = "relative",
         constraint_size: float = 0.03,
+        include_const_in_obs: bool = True,
     ) -> None:
         self.action_scale = action_scale
         self.action_rot_scale = action_rot_scale
@@ -219,7 +220,7 @@ class SawyerXYZEnv(SawyerMocapBase, EzPickle):
         ], f"invalid constraint mode {constraint_mode}"
         self._constraint_mode = constraint_mode
         self._constraint_size = constraint_size
-
+        self._include_const_in_obs = include_const_in_obs
         super().__init__(
             self.model_name,
             frame_skip=frame_skip,
@@ -384,7 +385,7 @@ class SawyerXYZEnv(SawyerMocapBase, EzPickle):
         """
         assert isinstance(pos, np.ndarray)
         assert pos.ndim == 1
-
+        self.model.site(name).pos = pos[:3]
         self.data.site(name).xpos = pos[:3]
     def _set_pos_body(self, name, pos):
         """Sets the position of the body corresponding to `name`.
@@ -531,8 +532,10 @@ class SawyerXYZEnv(SawyerMocapBase, EzPickle):
         obs_obj_padded[: len(obj_pos) + len(obj_quat)] = np.hstack(
             [np.hstack((pos, quat)) for pos, quat in zip(obj_pos_split, obj_quat_split)]
         )
-        pos_constraint = self._get_site_pos("constraint_site")
-        return np.hstack((pos_hand, gripper_distance_apart, obs_obj_padded, pos_constraint))
+        obs = np.hstack((pos_hand, gripper_distance_apart, obs_obj_padded))
+        if self._include_const_in_obs:
+            obs = np.hstack((obs, self._get_site_pos("constraint_site")))
+        return obs
 
     def _get_obs(self) -> npt.NDArray[np.float64]:
         """Frame stacks `_get_curr_obs_combined_no_goal()` and concatenates the goal position to form a single flat observation.
@@ -560,7 +563,7 @@ class SawyerXYZEnv(SawyerMocapBase, EzPickle):
 
     @property
     def sawyer_observation_space(self) -> Box:
-        obs_obj_max_len = 17
+        obs_obj_max_len = 17 if self._include_const_in_obs else 14
         obj_low = np.full(obs_obj_max_len, -np.inf, dtype=np.float64)
         obj_high = np.full(obs_obj_max_len, +np.inf, dtype=np.float64)
         if self._partially_observable:
@@ -729,8 +732,9 @@ class SawyerXYZEnv(SawyerMocapBase, EzPickle):
         self._set_constraint_xyz(pos_constraint)
         if self._last_rand_vec.shape[0] == 6:
             self._last_rand_vec =np.hstack((self._last_rand_vec, pos_constraint)).copy()
-        self._prev_obs = obs[:21].copy()
-        obs[21:42] = self._prev_obs
+        last_index = 21 if self._include_const_in_obs else 18
+        self._prev_obs = obs[:last_index].copy()
+        obs[last_index:-3] = self._prev_obs
         obs = obs.astype(np.float64)
         return obs, info
 

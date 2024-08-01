@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 import numpy as np
 import numpy.typing as npt
@@ -33,7 +33,8 @@ class SawyerReachEnvV2(SawyerXYZEnv):
         render_mode: RenderMode | None = None,
         camera_name: str | None = None,
         camera_id: int | None = None,
-        constraint_mode: str | None = None,
+        constraint_mode: Literal["static", "relative", "absolute", "random"] = "relative",
+        constraint_size: float = 0.03,
     ) -> None:
         goal_low = (-0.1, 0.8, 0.05)
         goal_high = (0.1, 0.9, 0.3)
@@ -49,6 +50,7 @@ class SawyerReachEnvV2(SawyerXYZEnv):
             camera_name=camera_name,
             camera_id=camera_id,
             constraint_mode=constraint_mode,
+            constraint_size=constraint_size,
         )
 
         self.init_config: InitConfigDict = {
@@ -119,11 +121,11 @@ class SawyerReachEnvV2(SawyerXYZEnv):
         self.obj_init_angle = self.init_config["obj_init_angle"]
 
         goal_pos = self._get_state_rand_vec()
-        self._target_pos = goal_pos[3:]
+        self._target_pos = goal_pos[3:6]
         while np.linalg.norm(goal_pos[:2] - self._target_pos[:2]) < 0.15:
             goal_pos = self._get_state_rand_vec()
-            self._target_pos = goal_pos[3:]
-        self._target_pos = goal_pos[-3:]
+            self._target_pos = goal_pos[3:6]
+        self._target_pos = goal_pos[3:6]
         self.obj_init_pos = goal_pos[:3]
         self._set_obj_xyz(self.obj_init_pos)
 

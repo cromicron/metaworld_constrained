@@ -35,6 +35,7 @@ class SawyerPickPlaceEnvV2(SawyerXYZEnv):
         camera_id: int | None = None,
         constraint_mode: Literal["static", "relative", "absolute", "random"] = "relative",
         constraint_size: float = 0.03,
+        include_const_in_obs: bool = True,
     ) -> None:
         goal_low = (-0.1, 0.8, 0.05)
         goal_high = (0.1, 0.9, 0.3)
@@ -51,6 +52,7 @@ class SawyerPickPlaceEnvV2(SawyerXYZEnv):
             camera_id=camera_id,
             constraint_mode=constraint_mode,
             constraint_size=constraint_size,
+            include_const_in_obs=include_const_in_obs,
         )
 
         self.init_config: InitConfigDict = {
