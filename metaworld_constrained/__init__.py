@@ -100,6 +100,7 @@ def _make_tasks(
     constraint_mode: Optional[
         Literal["static", "relative", "absolute", "random"]] = None,
     constraint_size: float = 0.03,
+    include_const_in_obs: bool = True,
 ) -> list[Task]:
     """Initialises goals for a given set of environments.
 
@@ -125,7 +126,11 @@ def _make_tasks(
         assert len(args["args"]) == 0
 
         # Init env
-        env = classes[env_name](constraint_mode=constraint_mode, constraint_size=constraint_size)
+        env = classes[env_name](
+            constraint_mode=constraint_mode,
+            constraint_size=constraint_size,
+            include_const_in_obs=include_const_in_obs,
+        )
         env._freeze_rand_vec = False
         env._set_task_called = True
         rand_vecs: list[npt.NDArray[Any]] = []
@@ -243,6 +248,8 @@ class ML1(Benchmark):
             raise ValueError(f"{env_name} is not a V2 environment")
         self.constraint_mode = constraint_mode
         self.constraint_size = constraint_size
+        self.include_const_in_obs = True if constraint_mode == "random" else False
+
         cls = _env_dict.ALL_V2_ENVIRONMENTS[env_name]
         self._train_classes = OrderedDict([(env_name, cls)])
         self._test_classes = self._train_classes
@@ -254,7 +261,8 @@ class ML1(Benchmark):
             _ML_OVERRIDE,
             seed=seed,
             constraint_mode=constraint_mode,
-            constraint_size=constraint_size
+            constraint_size=constraint_size,
+            include_const_in_obs=self.include_const_in_obs,
         )
         self._test_tasks = _make_tasks(
             self._test_classes,
@@ -263,6 +271,7 @@ class ML1(Benchmark):
             seed=(seed + 1 if seed is not None else seed),
             constraint_mode=constraint_mode,
             constraint_size=constraint_size,
+            include_const_in_obs=self.include_const_in_obs
         )
 
 
