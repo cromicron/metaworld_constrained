@@ -404,7 +404,7 @@ class SawyerXYZEnv(SawyerMocapBase, EzPickle):
 
     def _set_constraint_size(self, size: float):
         self.model.geom("boxGeomConst").size = np.full(3, size)
-        self.model.site("constraint_site").size = np.full(3, size * 0.98)
+        self.model.site("constraint_site").size = np.full(3, size * 0.995)
         mujoco.mj_forward(self.model, self.data)
 
     @property
@@ -724,6 +724,23 @@ class SawyerXYZEnv(SawyerMocapBase, EzPickle):
         elif self._constraint_mode == "relative":
             pos_constraint = ((self._last_rand_vec[: 3] + self._last_rand_vec[3: 6]) / 2)
             pos_constraint[-1] = 0.02
+        elif self._constraint_mode == "random":
+            # randomly place constraint in the box of object and goal
+            distance = 0
+            while distance < 2.5*self._constraint_size:
+                object_pos = self._last_rand_vec[: 3]
+                goal_pos = self._last_rand_vec[3: 6]
+                x_min = min(object_pos[0], goal_pos[0])
+                y_min = object_pos[1]
+                x_max = max(object_pos[0], goal_pos[0])
+                y_max = goal_pos[1]
+                pos_constraint = self.np_random.uniform(
+                    np.array([x_min, y_min, 0.02]),
+                    np.array([x_max, y_max, 0.02]),
+                    size=3,
+                )
+                distance = np.linalg.norm(pos_constraint[:-1]- object_pos[:-1])
+
         elif self._constraint_mode == "absolute":
             pos_constraint = np.array([0, 0.7, 0.02])
         else:
