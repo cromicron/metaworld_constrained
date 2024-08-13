@@ -726,20 +726,26 @@ class SawyerXYZEnv(SawyerMocapBase, EzPickle):
             pos_constraint[-1] = 0.02
         elif self._constraint_mode == "random":
             # randomly place constraint in the box of object and goal
-            distance = 0
-            while distance < 2.5*self._constraint_size:
+            # if the goal is not on the table, the constraint can be at the
+            # same y-coordinate as the goal. If it's on the table, then
+            # it could potentially overlap with the goal
+            distance_object = 0
+            while distance_object < 2.5*self._constraint_size:
                 object_pos = self._last_rand_vec[: 3]
                 goal_pos = self._last_rand_vec[3: 6]
                 x_min = min(object_pos[0], goal_pos[0])
                 y_min = object_pos[1]
                 x_max = max(object_pos[0], goal_pos[0])
                 y_max = goal_pos[1]
+                # adjust y_max if goal is on the table
+                if goal_pos[2] <= 0.1:
+                    y_max -= 2.5 * self._constraint_size
                 pos_constraint = self.np_random.uniform(
                     np.array([x_min, y_min, 0.02]),
                     np.array([x_max, y_max, 0.02]),
                     size=3,
                 )
-                distance = np.linalg.norm(pos_constraint[:-1]- object_pos[:-1])
+                distance_object = np.linalg.norm(pos_constraint[:-1]- object_pos[:-1])
 
         elif self._constraint_mode == "absolute":
             pos_constraint = np.array([0, 0.7, 0.02])

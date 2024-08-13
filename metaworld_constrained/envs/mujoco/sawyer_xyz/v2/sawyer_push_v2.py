@@ -36,7 +36,8 @@ class SawyerPushEnvV2(SawyerXYZEnv):
         camera_name: str | None = None,
         camera_id: int | None = None,
         constraint_mode: Literal["static", "relative", "absolute", "random"] = "relative",
-        constraint_size: float = 0.03
+        constraint_size: float = 0.03,
+        include_const_in_obs: bool = True,
     ) -> None:
         hand_low = (-0.5, 0.40, 0.05)
         hand_high = (0.5, 1, 0.5)
@@ -53,6 +54,7 @@ class SawyerPushEnvV2(SawyerXYZEnv):
             camera_id=camera_id,
             constraint_mode=constraint_mode,
             constraint_size=constraint_size,
+            include_const_in_obs=include_const_in_obs,
         )
 
         self.init_config: InitConfigDict = {
