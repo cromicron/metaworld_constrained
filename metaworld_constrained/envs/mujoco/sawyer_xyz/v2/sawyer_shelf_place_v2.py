@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 import mujoco
 import numpy as np
@@ -20,6 +20,9 @@ class SawyerShelfPlaceEnvV2(SawyerXYZEnv):
         render_mode: RenderMode | None = None,
         camera_name: str | None = None,
         camera_id: int | None = None,
+        constraint_mode: Literal["static", "relative", "absolute", "random"] = "relative",
+        constraint_size: float = 0.03,
+        include_const_in_obs: bool = True,
     ) -> None:
         goal_low = (-0.1, 0.8, 0.299)
         goal_high = (0.1, 0.9, 0.301)
@@ -34,6 +37,9 @@ class SawyerShelfPlaceEnvV2(SawyerXYZEnv):
             render_mode=render_mode,
             camera_name=camera_name,
             camera_id=camera_id,
+            constraint_mode=constraint_mode,
+            constraint_size=constraint_size,
+            include_const_in_obs=include_const_in_obs,
         )
 
         self.init_config: InitConfigDict = {
@@ -109,14 +115,46 @@ class SawyerShelfPlaceEnvV2(SawyerXYZEnv):
         # The convention we follow is that body_com[2] is always 0, and geom_pos[2] is the object height
         return np.array([adjustedPos[0], adjustedPos[1], self.get_body_com("obj")[-1]])
 
+    def _calc_constraint_pos(self):
+        if self._last_rand_vec.shape[0] == 9:
+            pos_constraint = self._last_rand_vec[-3: ]
+        elif self._constraint_mode == "relative":
+            # between object and shelf
+            shelf_edge = self.model.body("shelf").pos - (0, 0.1, 0)
+            between_point = (self.obj_init_pos[: -1] + shelf_edge[: -1])/2
+            pos_constraint = np.hstack((between_point, 0.02))
+        elif self._constraint_mode == "random":
+            # place constraint in box between obj and shelf
+            shelf_edge = self.model.body("shelf").pos - (0, 0.15, 0)
+            distance_object = 0
+            while distance_object < 2.5 * self._constraint_size:
+                x_min = min(self.obj_init_pos[0], self._target_pos[0])
+                x_max = max(self.obj_init_pos[0], self._target_pos[0])
+                y_min = self.obj_init_pos[1]
+                y_max = shelf_edge[1]
+
+                pos_constraint = self.np_random.uniform(
+                    np.array([x_min, y_min, 0.02]),
+                    np.array([x_max, y_max, 0.02]),
+                    size=3,
+                )
+                distance_object = np.linalg.norm(pos_constraint[:-1] - self.obj_init_pos[:-1])
+
+        elif self._constraint_mode == "absolute":
+            pos_constraint = np.array([0, 0.7, 0.02])
+        else:
+            pos_constraint = self.data.body("constraint_box").xipos
+        return pos_constraint
+
+
     def reset_model(self) -> npt.NDArray[np.float64]:
         self._reset_hand()
         self.obj_init_pos = self.adjust_initObjPos(self.init_config["obj_init_pos"])
         self.obj_init_angle = self.init_config["obj_init_angle"]
 
-        goal_pos = self._get_state_rand_vec()
-        while np.linalg.norm(goal_pos[:2] - goal_pos[-3:-1]) < 0.1:
-            goal_pos = self._get_state_rand_vec()
+        goal_pos = self._get_state_rand_vec()[: 6]
+        while np.linalg.norm(goal_pos[:2] - goal_pos[-3:-1]) < 0.12:
+            goal_pos = self._get_state_rand_vec()[: 6]
         base_shelf_pos = goal_pos - np.array([0, 0, 0, 0, 0, 0.3])
         self.obj_init_pos = np.concatenate(
             (base_shelf_pos[:2], [self.obj_init_pos[-1]])

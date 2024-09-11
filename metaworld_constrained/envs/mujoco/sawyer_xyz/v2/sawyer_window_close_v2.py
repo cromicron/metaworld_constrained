@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 import numpy as np
 import numpy.typing as npt
@@ -32,6 +32,9 @@ class SawyerWindowCloseEnvV2(SawyerXYZEnv):
         render_mode: RenderMode | None = None,
         camera_name: str | None = None,
         camera_id: int | None = None,
+        constraint_mode: Literal["static", "relative", "absolute", "random"] = "relative",
+        constraint_size: float = 0.03,
+        include_const_in_obs: bool = True,
     ) -> None:
         liftThresh = 0.02
         hand_low = (-0.5, 0.40, 0.05)
@@ -45,6 +48,9 @@ class SawyerWindowCloseEnvV2(SawyerXYZEnv):
             render_mode=render_mode,
             camera_name=camera_name,
             camera_id=camera_id,
+            constraint_mode=constraint_mode,
+            constraint_size=constraint_size,
+            include_const_in_obs=include_const_in_obs,
         )
 
         self.init_config: InitConfigDict = {
@@ -104,11 +110,36 @@ class SawyerWindowCloseEnvV2(SawyerXYZEnv):
     def _get_quat_objects(self) -> npt.NDArray[Any]:
         return np.zeros(4)
 
+    def _calc_constraint_pos(self):
+        if self._last_rand_vec.shape[0] == 6:
+            pos_constraint = self._last_rand_vec[-3: ]
+        elif self._constraint_mode == "relative":
+            # on the far side near the window handle
+            pos_constraint = self._target_pos + [0.23, -0.1, 0]
+            pos_constraint[2] = 0.02
+        elif self._constraint_mode == "random":
+            # place the constraint in a rectangle near the window handle
+            handle = self._target_pos + [0.21, -0.1, 0]
+            x_min = handle[0] - 0.1
+            x_max = handle[0] + 0.05
+            y_min = handle[1] - 0.1
+            y_max = handle[1]
+            pos_constraint = self.np_random.uniform(
+                np.array([x_min, y_min, 0.02]),
+                np.array([x_max, y_max, 0.02]),
+                size=3,
+            )
+        elif self._constraint_mode == "absolute":
+            pos_constraint = np.array([0, 0.7, 0.02])
+        else:
+            pos_constraint = self.data.body("constraint_box").xipos
+        return pos_constraint
+
     def reset_model(self) -> npt.NDArray[np.float64]:
         self._reset_hand()
         self.prev_obs = self._get_curr_obs_combined_no_goal()
 
-        self.obj_init_pos = self._get_state_rand_vec()
+        self.obj_init_pos = self._get_state_rand_vec()[: 3]
 
         self._target_pos = self.obj_init_pos.copy()
         self.model.body("window").pos = self.obj_init_pos
@@ -118,6 +149,7 @@ class SawyerWindowCloseEnvV2(SawyerXYZEnv):
         )
         self.data.joint("window_slide").qpos = 0.2
         self._set_pos_site("goal", self._target_pos)
+        self.model.site("goal").pos = self._target_pos
         return self._get_obs()
 
     def _reset_hand(self, steps: int = 50) -> None:

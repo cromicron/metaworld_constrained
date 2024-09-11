@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 import numpy as np
 import numpy.typing as npt
@@ -37,6 +37,9 @@ class SawyerPegInsertionSideEnvV2(SawyerXYZEnv):
         render_mode: RenderMode | None = None,
         camera_name: str | None = None,
         camera_id: int | None = None,
+        constraint_mode: Literal["static", "relative", "absolute", "random"] = "relative",
+        constraint_size: float = 0.03,
+        include_const_in_obs: bool = True,
     ) -> None:
         hand_init_pos = (0, 0.6, 0.2)
 
@@ -53,6 +56,9 @@ class SawyerPegInsertionSideEnvV2(SawyerXYZEnv):
             render_mode=render_mode,
             camera_name=camera_name,
             camera_id=camera_id,
+            constraint_mode=constraint_mode,
+            constraint_size=constraint_size,
+            include_const_in_obs=include_const_in_obs,
         )
 
         self.init_config: InitConfigDict = {
@@ -126,11 +132,41 @@ class SawyerPegInsertionSideEnvV2(SawyerXYZEnv):
         geom_xmat = self.data.site("pegGrasp").xmat.reshape(3, 3)
         return Rotation.from_matrix(geom_xmat).as_quat()
 
+    def _calc_constraint_pos(self):
+        if self._last_rand_vec.shape[0] == 9:
+            pos_constraint = self._last_rand_vec[-3: ]
+        elif self._constraint_mode == "relative":
+            y = (self.obj_init_pos[1] + self._target_pos[1]) /2
+            x = self.obj_init_pos[0] -0.05
+            pos_constraint = np.array((x, y, .02))
+
+        elif self._constraint_mode == "random":
+            # place constraint anywhere between end of peg
+            # and the goal
+            y_min = min(self._target_pos[1], self.obj_init_pos[1] + 0.05)
+            y_max = max(self._target_pos[1], self.obj_init_pos[1] - 0.05)
+            x_max = self.obj_init_pos[0] + 0.1
+            x_min = self._target_pos[0] + 0.12
+
+            pos_constraint = self.np_random.uniform(
+                np.array([x_min, y_min, 0.02]),
+                np.array([x_max, y_max, 0.02]),
+                size=3,
+            )
+        elif self._constraint_mode == "absolute":
+            pos_constraint = np.array([0, 0.7, 0.02])
+        else:
+            pos_constraint = self.data.body("constraint_box").xipos
+        return pos_constraint
+
+
     def reset_model(self) -> npt.NDArray[np.float64]:
         self._reset_hand()
-        pos_peg, pos_box = np.split(self._get_state_rand_vec(), 2)
-        while np.linalg.norm(pos_peg[:2] - pos_box[:2]) < 0.1:
-            pos_peg, pos_box = np.split(self._get_state_rand_vec(), 2)
+        pos_peg, pos_box = np.split(self._get_state_rand_vec()[: 6], 2)
+        while ((np.linalg.norm(pos_peg[:2] - pos_box[:2]) < 0.1) or (
+                abs(pos_peg[1] - pos_box[1])  < 3.2*self._constraint_size)
+        ):
+            pos_peg, pos_box = np.split(self._get_state_rand_vec()[: 6], 2)
         self.obj_init_pos = pos_peg
         self.peg_head_pos_init = self._get_site_pos("pegHead")
         self._set_obj_xyz(self.obj_init_pos)

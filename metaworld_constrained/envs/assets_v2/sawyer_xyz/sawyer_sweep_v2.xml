@@ -15,7 +15,7 @@
 
       <site name="hand-goal-site" pos="0 0 0" size="0.01"
             rgba="1 0.5 0.5 0"/>
-      <site name="goal" pos="0 0 0" size="0.01"
+      <site name="goal" pos="0.5 0.65 0.01" size="0.01"
             rgba="0.5 0.5 1 1"/>
     </worldbody>
 

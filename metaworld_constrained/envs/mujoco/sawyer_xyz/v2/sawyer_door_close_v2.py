@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 import numpy as np
 import numpy.typing as npt
@@ -19,6 +19,9 @@ class SawyerDoorCloseEnvV2(SawyerXYZEnv):
         render_mode: RenderMode | None = None,
         camera_name: str | None = None,
         camera_id: int | None = None,
+        constraint_mode: Literal["static", "relative", "absolute", "random"] = "relative",
+        constraint_size: float = 0.03,
+        include_const_in_obs: bool = True,
     ) -> None:
         goal_low = (0.2, 0.65, 0.1499)
         goal_high = (0.3, 0.75, 0.1501)
@@ -33,6 +36,9 @@ class SawyerDoorCloseEnvV2(SawyerXYZEnv):
             render_mode=render_mode,
             camera_name=camera_name,
             camera_id=camera_id,
+            constraint_mode=constraint_mode,
+            constraint_size=constraint_size,
+            include_const_in_obs=include_const_in_obs,
         )
 
         self.init_config: InitConfigDict = {
@@ -69,14 +75,47 @@ class SawyerDoorCloseEnvV2(SawyerXYZEnv):
     def _set_obj_xyz(self, pos: npt.NDArray[Any]) -> None:
         qpos = self.data.qpos.copy()
         qvel = self.data.qvel.copy()
-        qpos[self.door_qpos_adr] = pos
-        qvel[self.door_qvel_adr] = 0
+        move_index_pos = 7 # due to the additional object in main-scene, indexes change
+        move_index_vel = 6
+        qpos[9 + move_index_pos: 12 + move_index_pos] = pos.copy()
+        qvel[9 + move_index_vel: 15 + move_index_vel] = 0
         self.set_state(qpos.flatten(), qvel.flatten())
+
+    def _calc_constraint_pos(self):
+        if self._last_rand_vec.shape[0] == 6:
+            pos_constraint = self._last_rand_vec[-3: ]
+        elif self._constraint_mode == "relative":
+
+            pos_constraint = (self._last_rand_vec[: 2]  - np.array([0, 0.2]) + self.hand_init_pos[: -1]) / 2
+            pos_constraint = np.hstack((pos_constraint, [0.02]))
+
+        elif self._constraint_mode == "random":
+            # randomly place constraint in the box of object and goal
+            # if the goal is not on the table, the constraint can be at the
+            # same y-coordinate as the goal. If it's on the table, then
+            # it could potentially overlap with the goal
+
+            goal_pos = self._last_rand_vec[0: 3].copy()
+            x_min = self.hand_init_pos[0] + 0.1
+            y_min = goal_pos[1] - 0.35
+            max_coord = goal_pos - np.array([0.3, 0.2, 0.02])
+
+            pos_constraint = self.np_random.uniform(
+                np.array([x_min, y_min, 0.02]),
+                max_coord,
+                size=3,
+            )
+
+        elif self._constraint_mode == "absolute":
+            pos_constraint = np.array([0, 0.7, 0.02])
+        else:
+            pos_constraint = self.data.body("constraint_box").xipos
+        return pos_constraint
 
     def reset_model(self) -> npt.NDArray[np.float64]:
         self._reset_hand()
         self.objHeight = self.data.geom("handle").xpos[2]
-        obj_pos = self._get_state_rand_vec()
+        obj_pos = self._get_state_rand_vec()[:3]
         self.obj_init_pos = obj_pos
         goal_pos = obj_pos.copy() + np.array([0.2, -0.2, 0.0])
         self._target_pos = goal_pos

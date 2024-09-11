@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 import numpy as np
 import numpy.typing as npt
@@ -19,6 +19,9 @@ class SawyerDoorEnvV2(SawyerXYZEnv):
         render_mode: RenderMode | None = None,
         camera_name: str | None = None,
         camera_id: int | None = None,
+        constraint_mode: Literal["static", "relative", "absolute", "random"] = "relative",
+        constraint_size: float = 0.03,
+        include_const_in_obs: bool = True,
     ) -> None:
         hand_low = (-0.5, 0.40, 0.05)
         hand_high = (0.5, 1, 0.5)
@@ -33,6 +36,9 @@ class SawyerDoorEnvV2(SawyerXYZEnv):
             render_mode=render_mode,
             camera_name=camera_name,
             camera_id=camera_id,
+            constraint_mode=constraint_mode,
+            constraint_size=constraint_size,
+            include_const_in_obs=include_const_in_obs,
         )
 
         self.init_config: InitConfigDict = {
@@ -99,15 +105,53 @@ class SawyerDoorEnvV2(SawyerXYZEnv):
     def _set_obj_xyz(self, pos: npt.NDArray[Any]) -> None:
         qpos = self.data.qpos.copy()
         qvel = self.data.qvel.copy()
-        qpos[self.door_qpos_adr] = pos
-        qvel[self.door_qvel_adr] = 0
+        move_index_pos = 7 # due to the additional object in main-scene, indexes change
+        move_index_vel = 6
+        qpos[9 + move_index_pos: 12 + move_index_pos] = pos.copy()
+        qvel[9 + move_index_vel: 15 + move_index_vel] = 0
         self.set_state(qpos.flatten(), qvel.flatten())
+
+    @staticmethod
+    def random_point_in_triangle(A, B, C):
+        r1, r2 = np.random.uniform(0, 1, 2)
+        if r1 + r2 > 1:
+            r1, r2 = 1 - r1, 1 - r2
+        point = (1 - r1 - r2) * np.array(A) + r1 * np.array(B) + r2 * np.array(C)
+        return point
+    def _calc_constraint_pos(self):
+        if self._last_rand_vec.shape[0] == 6:
+            pos_constraint = self._last_rand_vec[-3: ]
+        elif self._constraint_mode == "relative":
+            # constraint is just very near the handle but not in the way of the door
+            pos_constraint = self._get_pos_objects()[:-1]  + np.array([0.02, -0.02])
+            pos_constraint = np.hstack((pos_constraint, [0.02]))
+
+        elif self._constraint_mode == "random":
+            # place constraint box in triangle between hand and door handle
+            door_handle = self._get_pos_objects()[:-1] +0.02
+            # point a bit in front of door handle
+            delta_handle = door_handle - np.array([0, 0.15])
+            x_min_point = np.array([self.hand_init_pos[0], delta_handle[1]])
+            distance = 0
+            joint_pos = self.data.joint("doorjoint").xanchor
+            door_pos = self.model.body("door").pos
+            radius = (door_pos[0] - joint_pos[0])*2 + 1.5*self._constraint_size
+            while distance < radius:
+                const_xy = self.random_point_in_triangle(door_handle, delta_handle, x_min_point)
+                distance = np.linalg.norm(np.array(const_xy) - joint_pos[:-1])
+            pos_constraint = np.hstack((const_xy, 0.02))
+
+        elif self._constraint_mode == "absolute":
+            pos_constraint = np.array([0, 0.7, 0.02])
+        else:
+            pos_constraint = self.data.body("constraint_box").xipos
+        return pos_constraint
 
     def reset_model(self) -> npt.NDArray[np.float64]:
         self._reset_hand()
         self.objHeight = self.data.geom("handle").xpos[2]
 
-        self.obj_init_pos = self._get_state_rand_vec()
+        self.obj_init_pos = self._get_state_rand_vec()[:3]
         self._target_pos = self.obj_init_pos + np.array([-0.3, -0.45, 0.0])
 
         self.model.body("door").pos = self.obj_init_pos

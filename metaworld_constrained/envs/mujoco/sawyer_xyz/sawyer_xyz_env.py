@@ -385,8 +385,8 @@ class SawyerXYZEnv(SawyerMocapBase, EzPickle):
         """
         assert isinstance(pos, np.ndarray)
         assert pos.ndim == 1
-        self.model.site(name).pos = pos[:3]
         self.data.site(name).xpos = pos[:3]
+
     def _set_pos_body(self, name, pos):
         """Sets the position of the body corresponding to `name`.
 
@@ -699,6 +699,69 @@ class SawyerXYZEnv(SawyerMocapBase, EzPickle):
         self.set_state(qpos, qvel)
         return self._get_obs()
 
+    def _calc_constraint_pos(self):
+
+        # original metaworld saves possible obj positions and goal positions
+        # in random_reset_space. Once constraint is set, the last_rand_vec size is
+        # 3 entries larger
+
+        random_obj_size = self._random_reset_space.shape[0]
+        if self._last_rand_vec.shape[0] == random_obj_size + 3:
+            pos_constraint = self._last_rand_vec[-3: ]
+        elif self._constraint_mode == "relative":
+            if random_obj_size == 6:
+                # True if there is goal and obj
+                pos_constraint = (self._last_rand_vec[: 2] + self._last_rand_vec[3: 5]) / 2
+                pos_constraint = np.hstack((pos_constraint, [0.02]))
+            else:
+                pos_constraint = (self._last_rand_vec[: 2]  + self.hand_init_pos[: -1]) / 2
+                pos_constraint = np.hstack((pos_constraint, [0.02]))
+        elif self._constraint_mode == "random":
+            # randomly place constraint in the box of object and goal
+            # if the goal is not on the table, the constraint can be at the
+            # same y-coordinate as the goal. If it's on the table, then
+            # it could potentially overlap with the goal
+            if random_obj_size == 6:
+                distance_object = 0
+                while distance_object < 2.5*self._constraint_size:
+                    object_pos = self._last_rand_vec[: 3]
+                    goal_pos = self._last_rand_vec[3: 6]
+                    x_min = min(object_pos[0], goal_pos[0])
+                    y_min = object_pos[1]
+                    x_max = max(object_pos[0], goal_pos[0])
+                    y_max = goal_pos[1]
+                    # adjust y_max if goal is on the table
+                    if goal_pos[2] <= 0.1:
+                        y_max -= 2.5 * self._constraint_size
+                    pos_constraint = self.np_random.uniform(
+                        np.array([x_min, y_min, 0.02]),
+                        np.array([x_max, y_max, 0.02]),
+                        size=3,
+                    )
+                    distance_object = np.linalg.norm(pos_constraint[:-1]- object_pos[:-1])
+
+            else:
+                goal_pos = self._last_rand_vec[0: 3]
+                x_min = min(self.hand_init_pos[0], goal_pos[0])
+                y_min = self.hand_init_pos[1]
+                x_max = max(self.hand_init_pos[0], goal_pos[0])
+                y_max = goal_pos[1]
+                # adjust y_max if goal is on the table
+                if goal_pos[2] <= 0.1:
+                    y_max -= 2.5 * self._constraint_size
+                pos_constraint = self.np_random.uniform(
+                    np.array([x_min, y_min, 0.02]),
+                    np.array([x_max, y_max, 0.02]),
+                    size=3,
+                )
+
+        elif self._constraint_mode == "absolute":
+            pos_constraint = np.array([0, 0.7, 0.02])
+        else:
+            pos_constraint = self.data.body("constraint_box").xipos
+        return pos_constraint
+
+
     def reset(
         self, seed: int | None = None, options: dict[str, Any] | None = None
     ) -> tuple[npt.NDArray[np.float64], dict[str, Any]]:
@@ -716,44 +779,12 @@ class SawyerXYZEnv(SawyerMocapBase, EzPickle):
         self.reset_mocap_welds()
 
         self.reset_model()
-
         obs, info = super().reset()
-
-        if self._last_rand_vec.shape[0] == 9:
-            pos_constraint = self._last_rand_vec[-3: ]
-        elif self._constraint_mode == "relative":
-            pos_constraint = ((self._last_rand_vec[: 3] + self._last_rand_vec[3: 6]) / 2)
-            pos_constraint[-1] = 0.02
-        elif self._constraint_mode == "random":
-            # randomly place constraint in the box of object and goal
-            # if the goal is not on the table, the constraint can be at the
-            # same y-coordinate as the goal. If it's on the table, then
-            # it could potentially overlap with the goal
-            distance_object = 0
-            while distance_object < 2.5*self._constraint_size:
-                object_pos = self._last_rand_vec[: 3]
-                goal_pos = self._last_rand_vec[3: 6]
-                x_min = min(object_pos[0], goal_pos[0])
-                y_min = object_pos[1]
-                x_max = max(object_pos[0], goal_pos[0])
-                y_max = goal_pos[1]
-                # adjust y_max if goal is on the table
-                if goal_pos[2] <= 0.1:
-                    y_max -= 2.5 * self._constraint_size
-                pos_constraint = self.np_random.uniform(
-                    np.array([x_min, y_min, 0.02]),
-                    np.array([x_max, y_max, 0.02]),
-                    size=3,
-                )
-                distance_object = np.linalg.norm(pos_constraint[:-1]- object_pos[:-1])
-
-        elif self._constraint_mode == "absolute":
-            pos_constraint = np.array([0, 0.7, 0.02])
-        else:
-            pos_constraint = self.data.body("constraint_box").xipos
-
+        pos_constraint = self._calc_constraint_pos()
         self._set_constraint_xyz(pos_constraint)
-        if self._last_rand_vec.shape[0] == 6:
+
+
+        if self._last_rand_vec.shape[0] == self._random_reset_space.shape[0]:
             self._last_rand_vec =np.hstack((self._last_rand_vec, pos_constraint)).copy()
         last_index = 21 if self._include_const_in_obs else 18
         self._prev_obs = obs[:last_index].copy()

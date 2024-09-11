@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 import numpy as np
 import numpy.typing as npt
@@ -20,6 +20,9 @@ class SawyerSweepEnvV2(SawyerXYZEnv):
         render_mode: RenderMode | None = None,
         camera_name: str | None = None,
         camera_id: int | None = None,
+        constraint_mode: Literal["static", "relative", "absolute", "random"] = "relative",
+        constraint_size: float = 0.03,
+        include_const_in_obs: bool = True,
     ) -> None:
         init_puck_z = 0.1
         hand_low = (-0.5, 0.40, 0.05)
@@ -35,6 +38,9 @@ class SawyerSweepEnvV2(SawyerXYZEnv):
             render_mode=render_mode,
             camera_name=camera_name,
             camera_id=camera_id,
+            constraint_mode=constraint_mode,
+            constraint_size=constraint_size,
+            include_const_in_obs=include_const_in_obs,
         )
 
         self.init_config: InitConfigDict = {
@@ -90,13 +96,36 @@ class SawyerSweepEnvV2(SawyerXYZEnv):
     def _get_pos_objects(self) -> npt.NDArray[Any]:
         return self.data.body("obj").xpos
 
+    def _calc_constraint_pos(self):
+        if self._last_rand_vec.shape[0] == 6:
+            pos_constraint = self._last_rand_vec[-3: ]
+        elif self._constraint_mode == "relative":
+            # midway between object and goal
+            between_point = (self.obj_init_pos[: -1] + self._target_pos[: -1])/2
+            pos_constraint = np.hstack((between_point, 0.02))
+        elif self._constraint_mode == "random":
+            # place the box anywhere on line between object and goal
+            x_min = self.obj_init_pos[0] + 2.5 * self._constraint_size
+            x_max = self._target_pos[0] - 2.5 * self._constraint_size
+            pos_constraint = self.np_random.uniform(
+                np.array([x_min, self.obj_init_pos[1], 0.02]),
+                np.array([x_max, self.obj_init_pos[1], 0.02]),
+                size=3,
+            )
+
+        elif self._constraint_mode == "absolute":
+            pos_constraint = np.array([0, 0.7, 0.02])
+        else:
+            pos_constraint = self.data.body("constraint_box").xipos
+        return pos_constraint
+
     def reset_model(self) -> npt.NDArray[np.float64]:
         self._reset_hand()
         self._target_pos = self.goal.copy()
         self.obj_init_pos = self.init_config["obj_init_pos"]
         self.objHeight = self._get_pos_objects()[2]
 
-        obj_pos = self._get_state_rand_vec()
+        obj_pos = self._get_state_rand_vec()[:3]
         self.obj_init_pos = np.concatenate([obj_pos[:2], [self.obj_init_pos[-1]]])
         self._target_pos[1] = obj_pos.copy()[1]
 
@@ -106,6 +135,8 @@ class SawyerSweepEnvV2(SawyerXYZEnv):
         )
         self.target_reward = 1000 * self.maxPushDist + 1000 * 2
         self._set_pos_site("goal", self._target_pos)
+        self.model.site("goal").pos = self._target_pos
+
         return self._get_obs()
 
     def _gripper_caging_reward(

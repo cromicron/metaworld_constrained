@@ -241,7 +241,7 @@ class ML1(Benchmark):
             seed=None,
             constraint_mode: Optional[
                 Literal["static", "relative", "absolute", "random"]] = "relative",
-            constraint_size: float = 0.03
+            constraint_size: float = 0.03,
     ):
         super().__init__()
         if env_name not in _env_dict.ALL_V2_ENVIRONMENTS:
@@ -278,19 +278,41 @@ class ML1(Benchmark):
 class ML10(Benchmark):
     """The ML10 benchmark. Contains 10 tasks in its train set and 5 tasks in its test set. The goal position is not part of the observation."""
 
-    def __init__(self, seed=None):
+    def __init__(
+            self,
+            seed=None,
+            constraint_mode: Optional[
+                Literal["static", "relative", "absolute", "random"]] = "relative",
+            constraint_size: float = 0.03,
+            include_const_in_obs = True,
+    ):
         super().__init__()
+        self.constraint_mode = constraint_mode
+        self.constraint_size = constraint_size
+        self.include_const_in_obs = include_const_in_obs
         self._train_classes = _env_dict.ML10_V2["train"]
         self._test_classes = _env_dict.ML10_V2["test"]
         train_kwargs = _env_dict.ML10_ARGS_KWARGS["train"]
 
         test_kwargs = _env_dict.ML10_ARGS_KWARGS["test"]
         self._train_tasks = _make_tasks(
-            self._train_classes, train_kwargs, _ML_OVERRIDE, seed=seed
+            self._train_classes,
+            train_kwargs,
+            _ML_OVERRIDE,
+            seed=seed,
+            constraint_mode=constraint_mode,
+            constraint_size=constraint_size,
+            include_const_in_obs=include_const_in_obs,
         )
 
         self._test_tasks = _make_tasks(
-            self._test_classes, test_kwargs, _ML_OVERRIDE, seed=seed
+            self._test_classes,
+            test_kwargs,
+            _ML_OVERRIDE,
+            seed=seed,
+            constraint_mode=constraint_mode,
+            constraint_size=constraint_size,
+            include_const_in_obs=self.include_const_in_obs,
         )
 
 

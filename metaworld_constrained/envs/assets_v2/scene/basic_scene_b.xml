@@ -46,6 +46,17 @@
 
       <geom name="floor" size="4 4 .1" pos="0 0 -.913" conaffinity="1" contype="1" type="plane" material="basic_floor" condim="3"/>
 
+        <body name="constraint_box" pos="0.2 0.75 0.02">
+            <joint name="box_joint" type="free" limited='false' damping="0.0" armature="0" />
+            <inertial pos="0 0 0" mass="0.01" diaginertia="100000 100000 100000"/>
+            <geom name="boxGeomConst" type="box" pos="0 0 0" solimp="0.99 0.99 0.01"
+                  size="0.03 0.3 0.3" rgba="0 0 1 1" solref="0.01 1"
+                  contype="1" conaffinity="1" friction="2 0.1 0.002" condim="4"/>
+            <site name="constraint_site"  pos="0 0 0" size="0.029 0.029 0.029" type="box"/>
+        </body>
   </worldbody>
-
+        <!-- Box touch sensor -->
+    <sensor>
+        <touch name="constraint_touch_sensor" site="constraint_site"/>
+    </sensor>
 </mujocoinclude>

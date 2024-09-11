@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 import numpy as np
 import numpy.typing as npt
@@ -21,10 +21,13 @@ class SawyerSweepIntoGoalEnvV2(SawyerXYZEnv):
         render_mode: RenderMode | None = None,
         camera_name: str | None = None,
         camera_id: int | None = None,
+        constraint_mode: Literal["static", "relative", "absolute", "random"] = "relative",
+        constraint_size: float = 0.03,
+        include_const_in_obs: bool = True,
     ) -> None:
         hand_low = (-0.5, 0.40, 0.05)
         hand_high = (0.5, 1, 0.5)
-        obj_low = (-0.1, 0.6, 0.02)
+        obj_low = (-0.1, 0.5, 0.02)
         obj_high = (0.1, 0.7, 0.02)
         goal_low = (-0.001, 0.8399, 0.0199)
         goal_high = (+0.001, 0.8401, 0.0201)
@@ -35,6 +38,9 @@ class SawyerSweepIntoGoalEnvV2(SawyerXYZEnv):
             render_mode=render_mode,
             camera_name=camera_name,
             camera_id=camera_id,
+            constraint_mode=constraint_mode,
+            constraint_size=constraint_size,
+            include_const_in_obs=include_const_in_obs,
         )
 
         self.init_config: InitConfigDict = {
@@ -92,6 +98,39 @@ class SawyerSweepIntoGoalEnvV2(SawyerXYZEnv):
     def _get_pos_objects(self) -> npt.NDArray[Any]:
         return self.get_body_com("obj")
 
+    def _calc_constraint_pos(self):
+        if self._last_rand_vec.shape[0] == 9:
+            pos_constraint = self._last_rand_vec[-3: ]
+        elif self._constraint_mode == "relative":
+            # const-box is at the midpoint between obj and edge of hole
+            midpoint = (self._target_pos[:-1] - [0, .08] + self.obj_init_pos[:-1])/2
+            pos_constraint = np.hstack((midpoint, .05))
+        elif self._constraint_mode == "random":
+            distance_object = 0
+            while distance_object < 2.5 * self._constraint_size:
+                object_pos = self.obj_init_pos
+                goal_pos = self._target_pos[:-1] - [0, .11]
+                hole_left_edge = goal_pos[0] -.06
+                hole_right_edge = goal_pos[0] + .06
+                x_min = hole_left_edge
+                y_min = object_pos[1] + 0.05
+                x_max = hole_right_edge
+                y_max = goal_pos[1]
+
+                pos_constraint = self.np_random.uniform(
+                    np.array([x_min, y_min, 0.05]),
+                    np.array([x_max, y_max, 0.05]),
+                    size=3,
+                )
+                distance_object = np.linalg.norm(pos_constraint[:-1] - object_pos[:-1])
+            #pos_constraint = np.array([x_min, y_min, 0.05])
+        elif self._constraint_mode == "absolute":
+            pos_constraint = np.array([0, 0.7, 0.05])
+        else:
+            pos_constraint = self.data.body("constraint_box").xipos
+        return pos_constraint
+
+
     def reset_model(self) -> npt.NDArray[np.float64]:
         self._reset_hand()
         self._target_pos = self.goal.copy()
@@ -99,9 +138,9 @@ class SawyerSweepIntoGoalEnvV2(SawyerXYZEnv):
         self.obj_init_angle = self.init_config["obj_init_angle"]
         self.objHeight = self.get_body_com("obj")[2]
 
-        goal_pos = self._get_state_rand_vec()
-        while np.linalg.norm(goal_pos[:2] - self._target_pos[:2]) < 0.15:
-            goal_pos = self._get_state_rand_vec()
+        goal_pos = self._get_state_rand_vec()[: 6]
+        while np.linalg.norm(goal_pos[:2] - self._target_pos[:2]) < 0.25:
+            goal_pos = self._get_state_rand_vec()[: 6]
         assert self.obj_init_pos is not None
         self.obj_init_pos = np.concatenate([goal_pos[:2], [self.obj_init_pos[-1]]])
 
