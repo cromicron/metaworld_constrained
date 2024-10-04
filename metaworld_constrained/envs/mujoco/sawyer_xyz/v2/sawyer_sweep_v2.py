@@ -107,7 +107,7 @@ class SawyerSweepEnvV2(SawyerXYZEnv):
             # place the box anywhere on line between object and goal
             x_min = self.obj_init_pos[0] + 2.5 * self._constraint_size
             x_max = self._target_pos[0] - 2.5 * self._constraint_size
-            pos_constraint = self.np_random.uniform(
+            pos_constraint = np.random.uniform(
                 np.array([x_min, self.obj_init_pos[1], 0.02]),
                 np.array([x_max, self.obj_init_pos[1], 0.02]),
                 size=3,

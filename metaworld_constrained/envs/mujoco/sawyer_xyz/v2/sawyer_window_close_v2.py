@@ -124,7 +124,7 @@ class SawyerWindowCloseEnvV2(SawyerXYZEnv):
             x_max = handle[0] + 0.05
             y_min = handle[1] - 0.1
             y_max = handle[1]
-            pos_constraint = self.np_random.uniform(
+            pos_constraint = np.random.uniform(
                 np.array([x_min, y_min, 0.02]),
                 np.array([x_max, y_max, 0.02]),
                 size=3,

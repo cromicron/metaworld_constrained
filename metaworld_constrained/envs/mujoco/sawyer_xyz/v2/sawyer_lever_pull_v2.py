@@ -125,7 +125,7 @@ class SawyerLeverPullEnvV2(SawyerXYZEnv):
             y_min = self.hand_init_pos[1]
             y_max = self._lever_pos_init[1]
 
-            pos_constraint = self.np_random.uniform(
+            pos_constraint = np.random.uniform(
                 np.array([x_min, y_min, 0.02]),
                 np.array([x_max, y_max, 0.02]),
                 size=3,

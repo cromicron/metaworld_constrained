@@ -133,7 +133,7 @@ class SawyerShelfPlaceEnvV2(SawyerXYZEnv):
                 y_min = self.obj_init_pos[1]
                 y_max = shelf_edge[1]
 
-                pos_constraint = self.np_random.uniform(
+                pos_constraint = np.random.uniform(
                     np.array([x_min, y_min, 0.02]),
                     np.array([x_max, y_max, 0.02]),
                     size=3,
@@ -153,7 +153,7 @@ class SawyerShelfPlaceEnvV2(SawyerXYZEnv):
         self.obj_init_angle = self.init_config["obj_init_angle"]
 
         goal_pos = self._get_state_rand_vec()[: 6]
-        while np.linalg.norm(goal_pos[:2] - goal_pos[-3:-1]) < 0.12:
+        while np.linalg.norm(goal_pos[:2] - goal_pos[-3:-1]) < 0.22:
             goal_pos = self._get_state_rand_vec()[: 6]
         base_shelf_pos = goal_pos - np.array([0, 0, 0, 0, 0, 0.3])
         self.obj_init_pos = np.concatenate(

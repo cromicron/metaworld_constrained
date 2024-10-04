@@ -123,7 +123,7 @@ class SawyerButtonPressTopdownEnvV2(SawyerXYZEnv):
             x_max = max(self.hand_init_pos[0], goal_pos[0])
             y_max = goal_pos[1]
 
-            pos_constraint = self.np_random.uniform(
+            pos_constraint = np.random.uniform(
                 np.array([x_min, y_min, 0.02]),
                 np.array([x_max, y_max, 0.02]),
                 size=3,

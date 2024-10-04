@@ -166,7 +166,6 @@ def _make_tasks(
     # Restore random state
     if seed is not None:
         np.random.set_state(st0)
-
     return tasks
 
 

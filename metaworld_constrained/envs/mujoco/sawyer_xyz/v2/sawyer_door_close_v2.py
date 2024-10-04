@@ -100,7 +100,7 @@ class SawyerDoorCloseEnvV2(SawyerXYZEnv):
             y_min = goal_pos[1] - 0.35
             max_coord = goal_pos - np.array([0.3, 0.2, 0.02])
 
-            pos_constraint = self.np_random.uniform(
+            pos_constraint = np.random.uniform(
                 np.array([x_min, y_min, 0.02]),
                 max_coord,
                 size=3,

@@ -117,7 +117,7 @@ class SawyerSweepIntoGoalEnvV2(SawyerXYZEnv):
                 x_max = hole_right_edge
                 y_max = goal_pos[1]
 
-                pos_constraint = self.np_random.uniform(
+                pos_constraint = np.random.uniform(
                     np.array([x_min, y_min, 0.05]),
                     np.array([x_max, y_max, 0.05]),
                     size=3,
