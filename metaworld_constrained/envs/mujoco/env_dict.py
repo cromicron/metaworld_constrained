@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import re
 from collections import OrderedDict
-from typing import Dict, List, Literal
+from typing import Dict, List, Literal, Optional, Type
 from typing import OrderedDict as Typing_OrderedDict
 from typing import Sequence, Union
 
@@ -89,25 +89,39 @@ def _get_env_dict(env_names: Sequence[str]) -> EnvDict:
 
 
 def _get_train_test_env_dict(
-    train_env_names: Sequence[str], test_env_names: Sequence[str]
-) -> TrainTestEnvDict:
-    """Returns an `OrderedDict` containing two sub-keys ("train" and "test" at positions 0 and 1),
-    each containing the appropriate `OrderedDict` for the train and test classes of the benchmark.
+        train_env_names: Sequence[str],
+        test_env_names: Sequence[str],
+        valid_env_names: Optional[Sequence[str]] = None,
+) -> OrderedDict[str, OrderedDict[str, Type[SawyerXYZEnv]]]:
+    """
+    Returns an `OrderedDict` with sub-keys ("train", "test", and optionally "valid"),
+    each containing the appropriate environment mappings.
 
     Args:
-        train_env_names: The train environment names.
-        test_env_names: The test environment names
+        train_env_names (Sequence[str]): Names of the training environments.
+        test_env_names (Sequence[str]): Names of the test environments.
+        valid_env_names (Optional[Sequence[str]], optional): Names of the validation environments.
+            Defaults to None.
 
     Returns:
-        The appropriate `OrderedDict`.
+        OrderedDict[str, OrderedDict[str, Type[SawyerXYZEnv]]]: Ordered dictionary with train,
+        test, and optionally valid environment mappings.
     """
+    if valid_env_names:
+        return OrderedDict(
+            (
+                ("train", _get_env_dict(train_env_names)),
+                ("test", _get_env_dict(test_env_names)),
+                ("valid", _get_env_dict(valid_env_names)),
+            )
+        )
+
     return OrderedDict(
         (
             ("train", _get_env_dict(train_env_names)),
             ("test", _get_env_dict(test_env_names)),
         )
     )
-
 
 def _get_args_kwargs(all_envs: EnvDict, env_subset: EnvDict) -> EnvArgsKwargsDict:
     """Returns containing a `dict` of "args" and "kwargs" for each environment in a given list of environments.
@@ -318,10 +332,20 @@ ML10_V2 = _get_train_test_env_dict(
         "sweep-into-v2",
         "lever-pull-v2",
     ],
+    valid_env_names=[
+        "bin-picking-v2",
+        "assembly-v2",
+        "window-close-v2",
+        "hammer-v2",
+        "button-press-v2",
+        "dial-turn-v2"
+    ]
+
 )
 ML10_ARGS_KWARGS = {
     "train": _get_args_kwargs(ALL_V2_ENVIRONMENTS, ML10_V2["train"]),
     "test": _get_args_kwargs(ALL_V2_ENVIRONMENTS, ML10_V2["test"]),
+    "valid": _get_args_kwargs(ALL_V2_ENVIRONMENTS, ML10_V2["valid"])
 }
 
 ML45_V2 = _get_train_test_env_dict(

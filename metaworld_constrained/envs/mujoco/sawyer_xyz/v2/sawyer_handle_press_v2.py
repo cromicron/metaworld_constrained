@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 import numpy as np
 import numpy.typing as npt
@@ -20,6 +20,9 @@ class SawyerHandlePressEnvV2(SawyerXYZEnv):
         render_mode: RenderMode | None = None,
         camera_name: str | None = None,
         camera_id: int | None = None,
+        constraint_mode: Literal["static", "relative", "absolute", "random"] = "relative",
+        constraint_size: float = 0.03,
+        include_const_in_obs: bool = True,
     ) -> None:
         hand_low = (-0.5, 0.40, 0.05)
         hand_high = (0.5, 1.0, 0.5)
@@ -34,6 +37,9 @@ class SawyerHandlePressEnvV2(SawyerXYZEnv):
             render_mode=render_mode,
             camera_name=camera_name,
             camera_id=camera_id,
+            constraint_mode=constraint_mode,
+            constraint_size=constraint_size,
+            include_const_in_obs=include_const_in_obs,
         )
 
         self.init_config: InitConfigDict = {
@@ -93,14 +99,33 @@ class SawyerHandlePressEnvV2(SawyerXYZEnv):
     def _set_obj_xyz(self, pos: npt.NDArray[Any]) -> None:
         qpos = self.data.qpos.flat.copy()
         qvel = self.data.qvel.flat.copy()
-        qpos[9] = pos
-        qvel[9] = 0
+        move_index_pos = 7 # due to the additional object in main-scene, indexes change
+        move_index_vel = 6
+        qpos[9 + move_index_pos: 12 + move_index_pos] = pos.copy()
+        qvel[9 + move_index_vel: 15 + move_index_vel] = 0
         self.set_state(qpos, qvel)
 
+    def _calc_constraint_pos(self):
+        if self._constraint_mode == "relative":
+            np.hstack([0.5*(self.hand_init_pos[:2] + self._target_pos[0:2]), 0.02])
+        elif self._constraint_mode == "random":
+            # anywhere between right side of hammer and goal pos, as long as not
+            # touching hammer or button
+            x_min = min(self.obj_init_pos[0], self._target_pos[0])
+            x_max = max(self.obj_init_pos[0], self._target_pos[0])
+            y_min = self.obj_init_pos[1]
+            y_max = self._target_pos[1]
+            pos_constraint = np.random.uniform((x_min, y_min, 0.1), (x_max, y_max, 0.02))
+            pos_constraint = self._target_pos
+        elif self._constraint_mode == "absolute":
+            pos_constraint = np.array([0, 0.7, 0.02])
+        else:
+            pos_constraint = self.data.body("constraint_box").xipos
+        return pos_constraint
     def reset_model(self) -> npt.NDArray[np.float64]:
         self._reset_hand()
 
-        self.obj_init_pos = self._get_state_rand_vec()
+        self.obj_init_pos = self._get_state_rand_vec()[:3]
         self.model.body("box").pos = self.obj_init_pos
         self._set_obj_xyz(np.array(-0.001))
         self._target_pos = self._get_site_pos("goalPress")

@@ -42,8 +42,10 @@ class Benchmark(abc.ABC):
 
     _train_classes: _env_dict.EnvDict
     _test_classes: _env_dict.EnvDict
+    _valid_classes: _env_dict.EnvDict
     _train_tasks: list[Task]
     _test_tasks: list[Task]
+    _valid_tasks: list[Task]
 
     @abc.abstractmethod
     def __init__(self):
@@ -60,6 +62,11 @@ class Benchmark(abc.ABC):
         return self._test_classes
 
     @property
+    def valid_classes(self) -> _env_dict.EnvDict:
+        """Returns all of the environment classes used for validation."""
+        return self._valid_classes
+
+    @property
     def train_tasks(self) -> list[Task]:
         """Returns all of the training tasks for this benchmark."""
         return self._train_tasks
@@ -68,6 +75,12 @@ class Benchmark(abc.ABC):
     def test_tasks(self) -> list[Task]:
         """Returns all of the test tasks for this benchmark."""
         return self._test_tasks
+
+    @property
+    def valid_tasks(self) -> list[Task]:
+        """Returns all of the test tasks for this benchmark."""
+        return self._valid_tasks
+
 
 
 _ML_OVERRIDE = dict(partially_observable=True)
@@ -284,6 +297,7 @@ class ML10(Benchmark):
                 Literal["static", "relative", "absolute", "random"]] = "relative",
             constraint_size: float = 0.03,
             include_const_in_obs = True,
+            valid = False,
     ):
         super().__init__()
         self.constraint_mode = constraint_mode
@@ -291,9 +305,12 @@ class ML10(Benchmark):
         self.include_const_in_obs = include_const_in_obs
         self._train_classes = _env_dict.ML10_V2["train"]
         self._test_classes = _env_dict.ML10_V2["test"]
+        self._valid_classes = _env_dict.ML10_V2["valid"]
         train_kwargs = _env_dict.ML10_ARGS_KWARGS["train"]
 
         test_kwargs = _env_dict.ML10_ARGS_KWARGS["test"]
+        valid_kwargs = _env_dict.ML10_ARGS_KWARGS["valid"]
+
         self._train_tasks = _make_tasks(
             self._train_classes,
             train_kwargs,
@@ -313,6 +330,16 @@ class ML10(Benchmark):
             constraint_size=constraint_size,
             include_const_in_obs=self.include_const_in_obs,
         )
+        if valid:
+            self._valid_tasks = _make_tasks(
+                self._valid_classes,
+                valid_kwargs,
+                _ML_OVERRIDE,
+                seed=seed,
+                constraint_mode=constraint_mode,
+                constraint_size=constraint_size,
+                include_const_in_obs=self.include_const_in_obs,
+            )
 
 
 class ML45(Benchmark):

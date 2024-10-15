@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 import numpy as np
 import numpy.typing as npt
@@ -20,11 +20,14 @@ class SawyerNutAssemblyEnvV2(SawyerXYZEnv):
         render_mode: RenderMode | None = None,
         camera_name: str | None = None,
         camera_id: int | None = None,
+        constraint_mode: Literal["static", "relative", "absolute", "random"] = "relative",
+        constraint_size: float = 0.03,
+        include_const_in_obs: bool = True,
     ) -> None:
         hand_low = (-0.5, 0.40, 0.05)
         hand_high = (0.5, 1, 0.5)
-        obj_low = (0, 0.6, 0.02)
-        obj_high = (0, 0.6, 0.02)
+        obj_low = (0, 0.55, 0.02)
+        obj_high = (0, 0.55, 0.02)
         goal_low = (-0.1, 0.75, 0.1)
         goal_high = (0.1, 0.85, 0.1)
 
@@ -34,6 +37,9 @@ class SawyerNutAssemblyEnvV2(SawyerXYZEnv):
             render_mode=render_mode,
             camera_name=camera_name,
             camera_id=camera_id,
+            constraint_mode=constraint_mode,
+            constraint_size=constraint_size,
+            include_const_in_obs=include_const_in_obs,
         )
 
         self.init_config: InitConfigDict = {
@@ -104,13 +110,41 @@ class SawyerNutAssemblyEnvV2(SawyerXYZEnv):
         obs_dict["state_achieved_goal"] = self.get_body_com("RoundNut")
         return obs_dict
 
+
+    def _calc_constraint_pos(self):
+        if self._last_rand_vec.shape[0] == 9:
+            pos_constraint = self._last_rand_vec[-3: ]
+        elif self._constraint_mode == "relative":
+            edge_object = self.obj_init_pos[1] + 0.05
+            midpoint = (np.array([self.obj_init_pos[0], edge_object]) + self._target_pos[:2]) /2
+            pos_constraint = np.hstack([midpoint, 0.02])
+
+        elif self._constraint_mode == "random":
+            y_min = self.obj_init_pos[1] + 0.05+ 2*self._constraint_size
+            y_max = self._target_pos[1] - 3.2 * self._constraint_size
+            x_min = min(self._target_pos[0], self.obj_init_pos[0] - 0.05)
+            x_max = max(self._target_pos[0] - 1.1*self._constraint_size, self.obj_init_pos[0] + 0.15)
+
+            pos_constraint = np.random.uniform(
+                np.array([x_min, y_min, 0.02]),
+                np.array([x_max, y_max, 0.02]),
+                size=3,
+            )
+
+        elif self._constraint_mode == "absolute":
+            pos_constraint = np.array([0, 0.7, 0.02])
+        else:
+            pos_constraint = self.data.body("constraint_box").xipos
+        return pos_constraint
+
     def reset_model(self) -> npt.NDArray[np.float64]:
         self._reset_hand()
         goal_pos = self._get_state_rand_vec()
-        while np.linalg.norm(goal_pos[:2] - goal_pos[-3:-1]) < 0.1:
+        while np.linalg.norm(goal_pos[:2] - goal_pos[3:5]) < 0.1:
             goal_pos = self._get_state_rand_vec()
+
         self.obj_init_pos = goal_pos[:3]
-        self._target_pos = goal_pos[-3:]
+        self._target_pos = goal_pos[3:6]
         peg_pos = self._target_pos - np.array([0.0, 0.0, 0.05])
         self._set_obj_xyz(self.obj_init_pos)
         self.model.body("peg").pos = peg_pos

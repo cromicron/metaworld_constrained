@@ -704,7 +704,6 @@ class SawyerXYZEnv(SawyerMocapBase, EzPickle):
         # original metaworld saves possible obj positions and goal positions
         # in random_reset_space. Once constraint is set, the last_rand_vec size is
         # 3 entries larger
-
         random_obj_size = self._random_reset_space.shape[0]
         if self._last_rand_vec.shape[0] == random_obj_size + 3:
             pos_constraint = self._last_rand_vec[-3: ]

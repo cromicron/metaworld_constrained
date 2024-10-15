@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 import mujoco
 import numpy as np
@@ -21,13 +21,16 @@ class SawyerDialTurnEnvV2(SawyerXYZEnv):
         render_mode: RenderMode | None = None,
         camera_name: str | None = None,
         camera_id: int | None = None,
+        constraint_mode: Literal["static", "relative", "absolute", "random"] = "relative",
+        constraint_size: float = 0.03,
+        include_const_in_obs: bool = True,
     ) -> None:
         hand_low = (-0.5, 0.40, 0.05)
         hand_high = (0.5, 1, 0.5)
-        obj_low = (-0.1, 0.7, 0.0)
-        obj_high = (0.1, 0.8, 0.0)
-        goal_low = (-0.1, 0.73, 0.0299)
-        goal_high = (0.1, 0.83, 0.0301)
+        obj_low = (-0.1, 0.80, 0.0)
+        obj_high = (0.1, 0.90, 0.0)
+        goal_low = (-0.1, 0.83, 0.0299)
+        goal_high = (0.1, 0.93, 0.0301)
 
         super().__init__(
             hand_low=hand_low,
@@ -35,6 +38,9 @@ class SawyerDialTurnEnvV2(SawyerXYZEnv):
             render_mode=render_mode,
             camera_name=camera_name,
             camera_id=camera_id,
+            constraint_mode=constraint_mode,
+            constraint_size=constraint_size,
+            include_const_in_obs=include_const_in_obs,
         )
 
         self.init_config: InitConfigDict = {
@@ -95,13 +101,94 @@ class SawyerDialTurnEnvV2(SawyerXYZEnv):
     def _get_quat_objects(self) -> npt.NDArray[Any]:
         return self.data.body("dial").xquat
 
+    import numpy as np
+
+    def _calc_constraint_pos(self):
+        if self._constraint_mode == "random":
+            # Circle parameters
+            center = self.obj_init_pos[:2]  # Circle center coordinates as a NumPy array
+            r = 0.05  # Circle radius (dial_radius)
+
+            # Square parameters
+            h = self._constraint_size / 2  # Half-length of the square's edge
+
+            # Distance constraints
+            D_min = self._constraint_size  # Minimum distance from the circle to the square
+            D_max = 0.1  # Maximum distance from the circle to the square
+
+            # Place the square randomly using vectorized operations
+            square_pos = self._place_square_randomly_vectorized(center, r, h, D_min, D_max)
+
+            # Return the position with a fixed z-coordinate (assuming z = 0.1)
+            return np.append(square_pos, 0.1)
+        else:
+            return super()._calc_constraint_pos()
+
+    def _place_square_randomly_vectorized(self, center, r, h, D_min, D_max):
+        """
+        Randomly place the square using vectorized operations such that it satisfies the distance constraints.
+        """
+        # Define the search area
+        max_extent = D_max + r + h * np.sqrt(2)
+        min_sample = center - max_extent
+        max_sample = center + max_extent
+
+        # Number of samples to generate in one batch
+        num_samples = 10000
+
+        # Generate random samples within the search area
+        samples = np.random.uniform(min_sample, max_sample, size=(num_samples, 2))
+
+        # Apply the y constraint (vectorized)
+        y_constraint = samples[:, 1] <= self.obj_init_pos[1] + 0.05
+        samples = samples[y_constraint]
+
+        # If no samples are valid after applying y constraint, raise an error
+        if len(samples) == 0:
+            raise ValueError("No valid samples after applying y constraint.")
+
+        # Compute the square boundaries for all samples (vectorized)
+        square_min = samples - h  # Lower-left corner of the squares
+        square_max = samples + h  # Upper-right corner of the squares
+
+        # Compute dx and dy for all samples (vectorized)
+        # For dx
+        dx = np.maximum.reduce([
+            square_min[:, 0] - center[0],  # When circle center is left of square
+            np.zeros(len(samples)),  # When circle center is within square horizontally
+            center[0] - square_max[:, 0]  # When circle center is right of square
+        ])
+
+        # For dy
+        dy = np.maximum.reduce([
+            square_min[:, 1] - center[1],  # When circle center is below square
+            np.zeros(len(samples)),  # When circle center is within square vertically
+            center[1] - square_max[:, 1]  # When circle center is above square
+        ])
+
+        # Compute the minimal distances D for all samples (vectorized)
+        d_center_to_square = np.sqrt(dx ** 2 + dy ** 2)
+        D = d_center_to_square - r
+
+        # Find samples that satisfy the distance constraints
+        valid_indices = (D >= D_min) & (D <= D_max)
+
+        # If valid samples are found, select one at random
+        if np.any(valid_indices):
+            idx = np.random.choice(np.where(valid_indices)[0])
+            square_pos = samples[idx]
+            return square_pos
+        else:
+            # If no valid position is found, raise an error
+            raise ValueError("Could not find a valid square position within the generated samples.")
+
     def reset_model(self) -> npt.NDArray[np.float64]:
         self._reset_hand()
         self._target_pos = self.goal.copy()
         self.obj_init_pos = self.init_config["obj_init_pos"]
         self.prev_obs = self._get_curr_obs_combined_no_goal()
 
-        goal_pos = self._get_state_rand_vec()
+        goal_pos = self._get_state_rand_vec()[:3]
         self.obj_init_pos = goal_pos[:3]
         final_pos = goal_pos.copy() + np.array([0, 0.03, 0.03])
         self._target_pos = final_pos
