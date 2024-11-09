@@ -46,7 +46,7 @@ Documentation = "https://metaworld.github.io/"
 include-package-data = true
 
 [tool.setuptools.package-data]
-metaworld = ["py.typed"]
+metaworld_constrained = ["py.typed"]
 
 [tool.setuptools.packages.find]
 include = ["metaworld_constrained", "metaworld_constrained.*"]
