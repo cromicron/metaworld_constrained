@@ -49,7 +49,7 @@ include-package-data = true
 metaworld = ["py.typed"]
 
 [tool.setuptools.packages.find]
-include = ["metaworld_constraind", "metaworld_constrained.*"]
+include = ["metaworld_constrained", "metaworld_constrained.*"]
 
 # Linters and Test tools #######################################################
 [tool.black]
