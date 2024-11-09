@@ -1,2 +1,2 @@
-graft metaworld/envs/assets_v1
-graft metaworld/envs/assets_v2
+graft metaworld_constrained/envs/assets_v1
+graft metaworld_constrained/envs/assets_v2
